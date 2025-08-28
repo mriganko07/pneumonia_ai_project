@@ -11,7 +11,7 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 # Load and preprocess image
-img = Image.open("text_xray3.jpeg").convert("RGB").resize((224, 224))
+img = Image.open("test_xray3.jpeg").convert("RGB").resize((224, 224))
 img_array = np.array(img, dtype=np.float32) / 255.0
 
 # Add batch dimension → (1, 224, 224, 3)
