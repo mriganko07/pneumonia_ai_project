@@ -105,8 +105,8 @@ python research_non_xray.py
 **2. Trained Model Files**
 After running the scripts, the following files will be generated in your project directory:
 
-  - `xray_model.h5` and `xray_model.tflite`
-  - `non_xray_model.h5` and `non_xray_model.tflite`
+  - `xray_preclassifier.h5` and `pneumonia_model.tflite`
+  - `non_xray_model.h5` and `xray_preclassifier.tflite`
 
 These `.h5` and `.tflite` files are the trained models ready to be integrated into an Android or web application.
 
