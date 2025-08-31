@@ -8,99 +8,80 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
 import os, shutil
-import pandas as pd
 import kagglehub
 
-# -------------------------------
+# ================================
 # 1. Download datasets
-# -------------------------------
-path_mooney = kagglehub.dataset_download("paultimothymooney/chest-xray-pneumonia")
-path_nih    = kagglehub.dataset_download("nih-chest-xrays/data")
+# ================================
+datasets = {
+    "mooney": "paultimothymooney/chest-xray-pneumonia",
+    "pcb": "pcbreviglieri/pneumonia-xray-images",
+    "jtip": "jtiptj/chest-xray-pneumoniacovid19tuberculosis",
+    "prashant": "prashant268/chest-xray-covid19-pneumonia"
+}
 
-print("Mooney Path:", path_mooney)
-print("NIH Path:", path_nih)
+downloaded_paths = {}
+for name, kaggle_id in datasets.items():
+    path = kagglehub.dataset_download(kaggle_id)
+    downloaded_paths[name] = path
+    print(f"✅ Downloaded {name}: {path}")
 
-# -------------------------------
-# 2. Prepare merged dataset folders
-# -------------------------------
+# ================================
+# 2. Prepare merged dataset folder
+# ================================
 base_dir = "merged_chest_xray"
 for split in ["train", "val", "test"]:
     for cls in ["NORMAL", "PNEUMONIA"]:
         os.makedirs(os.path.join(base_dir, split, cls), exist_ok=True)
 
-# Copy Mooney dataset into merged dataset
-def copy_images(src_dir, dst_dir):
-    for cls in ["NORMAL", "PNEUMONIA"]:
-        src = os.path.join(src_dir, cls)
-        dst = os.path.join(dst_dir, cls)
-        for file in os.listdir(src):
-            shutil.copy(os.path.join(src, file), dst)
+def copy_images(src_dir, dst_dir, valid_classes):
+    """
+    Copy images from src_dir into dst_dir, keeping only valid_classes.
+    """
+    if not os.path.exists(src_dir):
+        return
+    for cls in os.listdir(src_dir):
+        cls_path = os.path.join(src_dir, cls)
+        if not os.path.isdir(cls_path):
+            continue
+        cls_upper = cls.upper()
+        if cls_upper == "OPACITY":  # special case in pcb dataset
+            cls_upper = "PNEUMONIA"
+        if cls_upper in valid_classes:
+            dst_class = os.path.join(dst_dir, cls_upper)
+            os.makedirs(dst_class, exist_ok=True)
+            for file in os.listdir(cls_path):
+                shutil.copy(os.path.join(cls_path, file), dst_class)
 
-copy_images(os.path.join(path_mooney, "chest_xray/train"), os.path.join(base_dir, "train"))
-copy_images(os.path.join(path_mooney, "chest_xray/val"), os.path.join(base_dir, "val"))
-copy_images(os.path.join(path_mooney, "chest_xray/test"), os.path.join(base_dir, "test"))
+# ================================
+# 3. Merge datasets
+# ================================
 
-print("✅ Mooney dataset copied!")
+# Mooney dataset
+copy_images(os.path.join(downloaded_paths["mooney"], "chest_xray/train"), os.path.join(base_dir, "train"), ["NORMAL","PNEUMONIA"])
+copy_images(os.path.join(downloaded_paths["mooney"], "chest_xray/val"), os.path.join(base_dir, "val"), ["NORMAL","PNEUMONIA"])
+copy_images(os.path.join(downloaded_paths["mooney"], "chest_xray/test"), os.path.join(base_dir, "test"), ["NORMAL","PNEUMONIA"])
 
-# -------------------------------
-# 3. Process NIH dataset (Pneumonia + No Finding)
-# -------------------------------
-labels_csv = os.path.join(path_nih, "Data_Entry_2017.csv")
-df = pd.read_csv(labels_csv)
+# PCB dataset
+copy_images(os.path.join(downloaded_paths["pcb"], "train"), os.path.join(base_dir, "train"), ["NORMAL","OPACITY"])
+copy_images(os.path.join(downloaded_paths["pcb"], "val"), os.path.join(base_dir, "val"), ["NORMAL","OPACITY"])
+copy_images(os.path.join(downloaded_paths["pcb"], "test"), os.path.join(base_dir, "test"), ["NORMAL","OPACITY"])
 
-# Keep only Pneumonia + No Finding
-df = df[(df["Finding Labels"].str.contains("Pneumonia")) | (df["Finding Labels"] == "No Finding")]
+# JTipt dataset (ignore COVID19 + TUBERCULOSIS)
+copy_images(os.path.join(downloaded_paths["jtip"], "train"), os.path.join(base_dir, "train"), ["NORMAL","PNEUMONIA"])
+copy_images(os.path.join(downloaded_paths["jtip"], "val"), os.path.join(base_dir, "val"), ["NORMAL","PNEUMONIA"])
+copy_images(os.path.join(downloaded_paths["jtip"], "test"), os.path.join(base_dir, "test"), ["NORMAL","PNEUMONIA"])
 
-# Balanced subset
-df_pneumonia = df[df["Finding Labels"].str.contains("Pneumonia")].sample(5000, random_state=42)
-df_normal    = df[df["Finding Labels"] == "No Finding"].sample(5000, random_state=42)
-df_final = pd.concat([df_pneumonia, df_normal]).reset_index(drop=True)
+# Prashant dataset
+copy_images(os.path.join(downloaded_paths["prashant"], "Data/train"), os.path.join(base_dir, "train"), ["NORMAL","PNEUMONIA"])
+copy_images(os.path.join(downloaded_paths["prashant"], "Data/test"), os.path.join(base_dir, "test"), ["NORMAL","PNEUMONIA"])
 
-# Index NIH image paths (they are inside images_XXX/images/)
-nih_image_paths = {}
-for folder in os.listdir(path_nih):
-    if folder.startswith("images_"):
-        img_dir = os.path.join(path_nih, folder, "images")
-        if os.path.exists(img_dir):
-            for img_file in os.listdir(img_dir):
-                nih_image_paths[img_file] = os.path.join(img_dir, img_file)
+print("✅ All datasets merged into:", base_dir)
 
-print(f"✅ Indexed {len(nih_image_paths)} NIH images")
-
-# Split NIH into train/val/test
-train_df, temp_df = train_test_split(df_final, test_size=0.2, stratify=df_final["Finding Labels"], random_state=42)
-val_df, test_df   = train_test_split(temp_df, test_size=0.5, stratify=temp_df["Finding Labels"], random_state=42)
-
-splits = {
-    "train": train_df,
-    "val": val_df,
-    "test": test_df
-}
-
-# Copy NIH images
-missing = 0
-for split, split_df in splits.items():
-    for _, row in split_df.iterrows():
-        label = "PNEUMONIA" if "Pneumonia" in row["Finding Labels"] else "NORMAL"
-        img_file = row["Image Index"]
-        if img_file in nih_image_paths:
-            src = nih_image_paths[img_file]
-            dst = os.path.join(base_dir, split, label, img_file)
-            shutil.copy(src, dst)
-        else:
-            missing += 1
-
-print(f"✅ NIH subset added! (Missing {missing} images)")
-
-# -------------------------------
+# ================================
 # 4. Data Generators
-# -------------------------------
-train_dir = os.path.join(base_dir, "train")
-val_dir   = os.path.join(base_dir, "val")
-test_dir  = os.path.join(base_dir, "test")
-
+# ================================
 train_datagen = ImageDataGenerator(rescale=1./255,
                                    rotation_range=20,
                                    zoom_range=0.2,
@@ -110,13 +91,13 @@ train_datagen = ImageDataGenerator(rescale=1./255,
 val_datagen = ImageDataGenerator(rescale=1./255)
 test_datagen = ImageDataGenerator(rescale=1./255)
 
-train_gen = train_datagen.flow_from_directory(train_dir, target_size=(224,224), batch_size=32, class_mode='binary')
-val_gen   = val_datagen.flow_from_directory(val_dir,   target_size=(224,224), batch_size=32, class_mode='binary')
-test_gen  = test_datagen.flow_from_directory(test_dir, target_size=(224,224), batch_size=32, class_mode='binary', shuffle=False)
+train_gen = train_datagen.flow_from_directory(os.path.join(base_dir, "train"), target_size=(224,224), batch_size=32, class_mode='binary')
+val_gen   = val_datagen.flow_from_directory(os.path.join(base_dir, "val"),   target_size=(224,224), batch_size=32, class_mode='binary')
+test_gen  = test_datagen.flow_from_directory(os.path.join(base_dir, "test"), target_size=(224,224), batch_size=32, class_mode='binary', shuffle=False)
 
-# -------------------------------
+# ================================
 # 5. Build Model
-# -------------------------------
+# ================================
 base_model = MobileNetV2(weights="imagenet", include_top=False, input_shape=(224,224,3))
 
 for layer in base_model.layers:
@@ -131,14 +112,14 @@ model = Model(inputs=base_model.input, outputs=predictions)
 model.compile(optimizer=Adam(learning_rate=0.0001), loss="binary_crossentropy", metrics=["accuracy"])
 model.summary()
 
-# -------------------------------
+# ================================
 # 6. Train
-# -------------------------------
+# ================================
 history = model.fit(train_gen, validation_data=val_gen, epochs=10)
 
-# -------------------------------
+# ================================
 # 7. Evaluate
-# -------------------------------
+# ================================
 y_pred = model.predict(test_gen)
 y_pred_classes = (y_pred > 0.5).astype("int32")
 
@@ -148,9 +129,9 @@ cm = confusion_matrix(test_gen.classes, y_pred_classes)
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Normal","Pneumonia"], yticklabels=["Normal","Pneumonia"])
 plt.show()
 
-# -------------------------------
+# ================================
 # 8. Save Model
-# -------------------------------
+# ================================
 model.save("pneumonia_mobilenetv2_merged.h5")
 
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
@@ -158,4 +139,4 @@ tflite_model = converter.convert()
 with open("pneumonia_model_merged.tflite", "wb") as f:
     f.write(tflite_model)
 
-print("✅ Model exported as pneumonia_model_merged.tflite")
+print("✅ Model exported as .h5 and .tflite")
