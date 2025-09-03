@@ -1,0 +1,21 @@
+{
+  "labels": [
+    "NORMAL",
+    "PNEUMONIA",
+    "COVID19",
+    "TUBERCULOSIS",
+    "OPACITY",
+    "EFFUSION",
+    "INFILTRATION",
+    "ATELECTASIS",
+    "CARDIOMEGALY",
+    "NODULE",
+    "MASS",
+    "PLEURAL_THICKENING",
+    "EMPHYSEMA",
+    "PNEUMOTHORAX",
+    "FIBROSIS",
+    "HERNIA"
+  ],
+  "threshold": 0.5
+}
